@@ -23,7 +23,7 @@ python -m gamma_clean --input examples/dirty.csv --schema examples/schema.json -
 
 ## GitHub 仓库
 
-建议仓库名 `gamma-clean-pipeline`。公开仓库方便评审直接访问；私有仓库需按平台方式授予评审访问权限。
+项目仓库：[baiyang431/gamma-clean-pipeline](https://github.com/baiyang431/gamma-clean-pipeline)。仓库为公开仓库，方便评审直接访问。
 
 如果本地项目尚未初始化 Git：
 
@@ -35,10 +35,10 @@ git commit -m "Implement reproducible CSV cleaning pipeline"
 
 如果本地已包含初始提交，则跳过以上步骤。可通过 `git status` 和 `git log -1 --oneline` 检查。
 
-在自己的 GitHub 账号创建空仓库，不预先生成 README。将下面地址中的 `YOUR_ACCOUNT` 替换为自己的用户名；该地址是模板，不是已创建仓库：
+仓库已创建。首次从本地上传时可使用实际地址：
 
 ```console
-git remote add origin https://github.com/YOUR_ACCOUNT/gamma-clean-pipeline.git
+git remote add origin https://github.com/baiyang431/gamma-clean-pipeline.git
 git push -u origin main
 ```
 

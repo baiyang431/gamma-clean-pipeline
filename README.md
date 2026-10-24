@@ -1,5 +1,7 @@
 # GAMMA LAB：可重复的数据清洗流水线
 
+[GitHub 仓库](https://github.com/baiyang431/gamma-clean-pipeline) · [自动测试](https://github.com/baiyang431/gamma-clean-pipeline/actions)
+
 一个 Python 命令行项目：按 JSON 规则读取 CSV，处理编码、缺失值、重复记录与非法值，输出干净数据、剔除记录和可复现报告。
 
 运行和测试只依赖 Python 标准库，无需联网安装第三方运行依赖。样例是合成测试数据，不包含真实人员信息。
