@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "missing_tokens": ["", "NA", "N/A", "NULL", "null"],
+  "dedupe_key": ["id"],
+  "columns": [
+    {"name": "id", "type": "string", "required": true},
+    {"name": "name", "type": "string", "required": true},
+    {"name": "age", "type": "integer", "required": false, "min": 0, "max": 120},
+    {"name": "city", "type": "string", "required": false, "default": "未知"},
+    {"name": "amount", "type": "number", "required": true, "min": 0},
+    {"name": "joined", "type": "date", "required": true},
+    {"name": "status", "type": "string", "required": true, "choices": ["active", "inactive"]}
+  ]
+}

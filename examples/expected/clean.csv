@@ -1,0 +1,5 @@
+id,name,age,city,amount,joined,status
+001,张三,20,北京,10.5,2026-01-01,active
+002,李四,,未知,0,2026-02-28,inactive
+008,周九,120,成都,1.23,2026-03-01,active
+010,郑一,0,未知,0,2026-03-01,active
