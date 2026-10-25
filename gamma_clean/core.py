@@ -6,6 +6,7 @@ import io
 import json
 import re
 import tempfile
+import unicodedata
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -19,6 +20,10 @@ class CleanError(Exception):
     def __init__(self, message, exit_code=2):
         super().__init__(message)
         self.exit_code = exit_code
+
+
+def normalize(value):
+    return unicodedata.normalize("NFC", value).strip()
 
 
 def json_bytes(value):
@@ -36,6 +41,7 @@ def convert(value, rule):
             value = str(int(value))
         except ValueError:
             raise ValueError("invalid_integer") from None
+        number = Decimal(value)
     elif kind == "number":
         if not re.fullmatch(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)", value):
             raise ValueError("invalid_number")
@@ -53,7 +59,6 @@ def convert(value, rule):
         except ValueError:
             raise ValueError("invalid_date") from None
     if kind in ("integer", "number"):
-        number = Decimal(value)
         if "min" in rule and number < Decimal(str(rule["min"])):
             raise ValueError("below_min")
         if "max" in rule and number > Decimal(str(rule["max"])):
@@ -83,6 +88,8 @@ def load_schema(raw):
         or "" not in tokens
     ):
         raise CleanError("missing_tokens must be a string list containing empty string")
+    tokens = [normalize(token) for token in tokens]
+    schema["missing_tokens"] = tokens
     names = []
     for rule in columns:
         allowed = {"name", "type", "required", "default", "min", "max", "choices"}
@@ -121,18 +128,16 @@ def load_schema(raw):
                 or not all(isinstance(choice, str) for choice in choices)
             ):
                 raise CleanError(f"choices must be a nonempty string list: {name}")
+            rule["choices"] = [normalize(choice) for choice in choices]
         if "default" in rule:
             value = rule["default"]
-            if (
-                rule["required"]
-                or not isinstance(value, str)
-                or value.strip() in tokens
-            ):
-                raise CleanError(
-                    f"default needs an optional column and a nonmissing string: {name}"
-                )
+            if rule["required"] or not isinstance(value, str):
+                raise CleanError(f"default needs an optional string value: {name}")
+            value = normalize(value)
+            if value in tokens:
+                raise CleanError(f"default must not be a missing token: {name}")
             try:
-                rule["default"] = convert(value.strip(), rule)
+                rule["default"] = convert(value, rule)
             except (ValueError, InvalidOperation) as exc:
                 raise CleanError(f"Invalid default for {name}: {exc}") from exc
     keys = schema.setdefault("dedupe_key", names.copy())
@@ -152,7 +157,7 @@ def clean_row(row, columns, indices, missing_tokens):
     reasons = []
     filled_count = 0
     for rule, index in zip(columns, indices):
-        value = row[index].strip()
+        value = normalize(row[index])
         if value in missing_tokens:
             if "default" in rule:
                 value = rule["default"]
@@ -168,6 +173,20 @@ def clean_row(row, columns, indices, missing_tokens):
                 reasons.append(f"{rule['name']}:{exc}")
         cleaned.append(value)
     return cleaned, reasons, filled_count
+
+
+def serialize_results(names, rows, rejected):
+    """Encode clean CSV and rejected records without changing raw field values."""
+    output = io.StringIO(newline="")
+    writer = csv.writer(output, lineterminator="\n")
+    writer.writerow(names)
+    writer.writerows(rows)
+    clean = output.getvalue().encode("utf-8")
+    rejects = "".join(
+        json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"
+        for record in rejected
+    ).encode("utf-8")
+    return clean, rejects
 
 
 def clean_data(raw, schema, encoding="utf-8-sig"):
@@ -218,15 +237,7 @@ def clean_data(raw, schema, encoding="utf-8-sig"):
         raise CleanError(
             f"Malformed CSV near physical line {reader.line_num}: {exc}"
         ) from exc
-    output = io.StringIO(newline="")
-    writer = csv.writer(output, lineterminator="\n")
-    writer.writerow(names)
-    writer.writerows(clean_rows)
-    clean = output.getvalue().encode("utf-8")
-    rejects = "".join(
-        json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"
-        for record in rejected
-    ).encode("utf-8")
+    clean, rejects = serialize_results(names, clean_rows, rejected)
     report = {
         "tool_version": __version__,
         "schema_version": schema["version"],

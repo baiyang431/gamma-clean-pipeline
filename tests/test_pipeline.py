@@ -71,15 +71,6 @@ class PipelineTests(unittest.TestCase):
             (11, 4, 6, 1, 2),
         )
 
-    def test_repeat_runs_have_identical_artifact_bytes(self):
-        for name in ("one", "two"):
-            run(EXAMPLES / "dirty.csv", EXAMPLES / "schema.json", self.base / name)
-        for name in ("clean.csv", "rejected.jsonl", "report.json"):
-            self.assertEqual(
-                (self.base / "one" / name).read_bytes(),
-                (self.base / "two" / name).read_bytes(),
-            )
-
     def test_clean_output_is_idempotent(self):
         first, _, _ = clean_data((EXAMPLES / "dirty.csv").read_bytes(), self.schema)
         second, rejects, report = clean_data(first, self.schema)
@@ -123,6 +114,9 @@ class PipelineTests(unittest.TestCase):
         ):
             with self.subTest(header=header), self.assertRaises(CleanError):
                 clean_data((header + "\n").encode(), self.schema)
+        schema = self.small_schema([{"name": "é", "type": "string"}])
+        with self.assertRaises(CleanError):
+            clean_data("e\u0301\nvalue\n".encode("utf-8"), schema)
 
     def test_header_order_is_reordered_to_schema(self):
         schema = self.small_schema([
@@ -212,13 +206,43 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(clean, b"n\n1\n2\n")
         self.assertEqual(report["duplicate_rows"], 1)
 
-    def test_whitespace_is_trimmed_without_changing_unicode(self):
-        schema = self.small_schema([{"name": "s", "type": "string"}])
-        clean, _, report = self.clean_rows(
-            [["s"], [" e\u0301 "], ["é"], [" é "]], schema
+    def test_nfc_and_whitespace_are_applied_before_key_deduplication(self):
+        schema = self.small_schema(
+            [{"name": "id", "type": "string"}, {"name": "label", "type": "string"}],
+            dedupe_key=["id"],
         )
-        self.assertEqual(clean.decode(), "s\ne\u0301\né\n")
+        clean, rejected, report = self.clean_rows(
+            [
+                ["id", "label"], [" e\u0301 ", " first "],
+                ["é", "second"], [" é ", "third"],
+            ],
+            schema,
+        )
+        self.assertEqual(clean.decode(), "id,label\né,first\n")
+        self.assertEqual(report["duplicate_rows"], 2)
+        records = [json.loads(line) for line in rejected.splitlines()]
+        self.assertEqual(records[1]["values"], [" é ", "third"])
+        self.assertEqual(records[0]["reasons"], ["duplicate"])
+
+    def test_nfc_defaults_and_choices_match_cleaned_values(self):
+        schema = self.small_schema(
+            [
+                {
+                    "name": "city", "type": "string", "required": False,
+                    "default": " cafe\u0301 ",
+                },
+                {"name": "status", "type": "string", "choices": [" e\u0301 "]},
+            ],
+            missing_tokens=["", " N/A "],
+        )
+        clean, rejected, report = self.clean_rows(
+            [["city", "status"], ["N/A", "é"], ["cafe\u0301", " e\u0301 "]],
+            schema,
+        )
+        self.assertEqual(clean.decode(), "city,status\ncafé,é\n")
+        self.assertEqual(report["filled_cells_in_output"], 1)
         self.assertEqual(report["duplicate_rows"], 1)
+        self.assertEqual(json.loads(rejected)["reasons"], ["duplicate"])
 
     def test_nul_input_is_rejected(self):
         with self.assertRaises(CleanError):

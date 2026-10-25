@@ -15,22 +15,22 @@ test_leap_day_and_strict_iso_dates (test_pipeline.PipelineTests.test_leap_day_an
 test_missing_default_optional_and_required (test_pipeline.PipelineTests.test_missing_default_optional_and_required) ... ok
 test_missing_extra_duplicate_headers_fail (test_pipeline.PipelineTests.test_missing_extra_duplicate_headers_fail) ... ok
 test_missing_input_exit_three (test_pipeline.PipelineTests.test_missing_input_exit_three) ... ok
+test_nfc_and_whitespace_are_applied_before_key_deduplication (test_pipeline.PipelineTests.test_nfc_and_whitespace_are_applied_before_key_deduplication) ... ok
+test_nfc_defaults_and_choices_match_cleaned_values (test_pipeline.PipelineTests.test_nfc_defaults_and_choices_match_cleaned_values) ... ok
 test_nonfinite_bounds_and_malformed_json_fail (test_pipeline.PipelineTests.test_nonfinite_bounds_and_malformed_json_fail) ... ok
 test_nul_input_is_rejected (test_pipeline.PipelineTests.test_nul_input_is_rejected) ... ok
 test_paths_with_spaces_work_and_inputs_are_unchanged (test_pipeline.PipelineTests.test_paths_with_spaces_work_and_inputs_are_unchanged) ... ok
 test_quoted_commas_and_multiline_values_are_preserved (test_pipeline.PipelineTests.test_quoted_commas_and_multiline_values_are_preserved) ... ok
-test_repeat_runs_have_identical_artifact_bytes (test_pipeline.PipelineTests.test_repeat_runs_have_identical_artifact_bytes) ... ok
 test_sample_matches_independent_expected_csv_and_rejection_reasons (test_pipeline.PipelineTests.test_sample_matches_independent_expected_csv_and_rejection_reasons) ... ok
 test_schema_rejects_unknown_keys_and_invalid_rules (test_pipeline.PipelineTests.test_schema_rejects_unknown_keys_and_invalid_rules) ... ok
 test_strict_mode_exit_one_publishes_nothing (test_pipeline.PipelineTests.test_strict_mode_exit_one_publishes_nothing) ... ok
 test_success_cli_publishes_expected_data_and_report (test_pipeline.PipelineTests.test_success_cli_publishes_expected_data_and_report) ... ok
 test_utf8_bom_is_supported (test_pipeline.PipelineTests.test_utf8_bom_is_supported) ... ok
 test_valid_input_passes_strict_mode (test_pipeline.PipelineTests.test_valid_input_passes_strict_mode) ... ok
-test_whitespace_is_trimmed_without_changing_unicode (test_pipeline.PipelineTests.test_whitespace_is_trimmed_without_changing_unicode) ... ok
 test_write_failure_removes_staging_and_leaves_no_result (test_pipeline.PipelineTests.test_write_failure_removes_staging_and_leaves_no_result) ... ok
 test_wrong_or_unknown_encoding_fails_without_replacement (test_pipeline.PipelineTests.test_wrong_or_unknown_encoding_fails_without_replacement) ... ok
 
 ----------------------------------------------------------------------
-Ran 31 tests in 1.836s
+Ran 31 tests in 1.863s
 
 OK
