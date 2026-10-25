@@ -1,4 +1,4 @@
-"""Validate rules, clean CSV records, and publish reproducible artifacts."""
+"""CSV cleaning and rule validation."""
 
 import codecs
 import csv
@@ -14,270 +14,264 @@ from pathlib import Path
 from . import __version__
 
 
-class CleanError(Exception):
+class CErr(Exception):
     """An expected input, schema, or quality error."""
 
-    def __init__(self, message, exit_code=2):
-        super().__init__(message)
-        self.exit_code = exit_code
+    def __init__(self, msg, rc=2):
+        super().__init__(msg)
+        self.rc = rc
 
 
-def normalize(value):
-    return unicodedata.normalize("NFC", value).strip()
+def nfc(val):
+    return unicodedata.normalize("NFC", val).strip()
 
 
-def json_bytes(value):
-    text = json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
-    return (text + "\n").encode("utf-8")
-
-
-def convert(value, rule):
+def cvt(val, rl):
     """Return a canonical string or raise ValueError with a stable reason."""
-    kind = rule["type"]
-    if kind == "integer":
-        if not re.fullmatch(r"[+-]?[0-9]+", value):
+    typ = rl["type"]
+    if typ == "integer":
+        if not re.fullmatch(r"[+-]?[0-9]+", val):
             raise ValueError("invalid_integer")
         try:
-            value = str(int(value))
+            val = str(int(val))
         except ValueError:
             raise ValueError("invalid_integer") from None
-        number = Decimal(value)
-    elif kind == "number":
-        if not re.fullmatch(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)", value):
+        num = Decimal(val)
+    elif typ == "number":
+        if not re.fullmatch(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)", val):
             raise ValueError("invalid_number")
-        number = Decimal(value)
-        value = format(number, "f")
-        if "." in value:
-            value = value.rstrip("0").rstrip(".")
-        if number == 0:
-            value = "0"
-    elif kind == "date":
-        if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
+        num = Decimal(val)
+        val = format(num, "f")
+        if "." in val:
+            val = val.rstrip("0").rstrip(".")
+        if num == 0:
+            val = "0"
+    elif typ == "date":
+        if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", val):
             raise ValueError("invalid_date")
         try:
-            value = date.fromisoformat(value).isoformat()
+            val = date.fromisoformat(val).isoformat()
         except ValueError:
             raise ValueError("invalid_date") from None
-    if kind in ("integer", "number"):
-        if "min" in rule and number < Decimal(str(rule["min"])):
+    if typ in ("integer", "number"):
+        if "min" in rl and num < Decimal(str(rl["min"])):
             raise ValueError("below_min")
-        if "max" in rule and number > Decimal(str(rule["max"])):
+        if "max" in rl and num > Decimal(str(rl["max"])):
             raise ValueError("above_max")
-    if "choices" in rule and value not in rule["choices"]:
+    if "choices" in rl and val not in rl["choices"]:
         raise ValueError("not_in_choices")
-    return value
+    return val
 
 
-def load_schema(raw):
+def lcfg(buf):
     try:
-        schema = json.loads(raw.decode("utf-8-sig"))
-    except (UnicodeError, ValueError) as exc:
-        raise CleanError(f"Invalid schema JSON: {exc}") from exc
-    allowed = {"version", "columns", "dedupe_key", "missing_tokens"}
-    if not isinstance(schema, dict) or set(schema) - allowed:
-        raise CleanError("Schema must be an object with only supported keys")
-    if type(schema.get("version")) is not int or schema["version"] != 1:
-        raise CleanError("Schema version must be integer 1")
-    columns = schema.get("columns")
-    if not isinstance(columns, list) or not columns:
-        raise CleanError("Schema columns must be a nonempty list")
-    tokens = schema.setdefault("missing_tokens", ["", "NA", "N/A", "NULL", "null"])
+        cfg = json.loads(buf.decode("utf-8-sig"))
+    except ValueError as err:
+        raise CErr(f"Invalid schema JSON: {err}") from err
+    aks = {"version", "columns", "dedupe_key", "missing_tokens"}
+    if not isinstance(cfg, dict) or set(cfg) - aks:
+        raise CErr("Schema must be an object with only supported keys")
+    if type(cfg.get("version")) is not int or cfg["version"] != 1:
+        raise CErr("Schema version must be integer 1")
+    cols = cfg.get("columns")
+    if not isinstance(cols, list) or not cols:
+        raise CErr("Schema columns must be a nonempty list")
+    tks = cfg.setdefault("missing_tokens", ["", "NA", "N/A", "NULL", "null"])
     if (
-        not isinstance(tokens, list)
-        or not all(isinstance(token, str) for token in tokens)
-        or "" not in tokens
+        not isinstance(tks, list)
+        or not all(isinstance(tk, str) for tk in tks)
+        or "" not in tks
     ):
-        raise CleanError("missing_tokens must be a string list containing empty string")
-    tokens = [normalize(token) for token in tokens]
-    schema["missing_tokens"] = tokens
-    names = []
-    for rule in columns:
-        allowed = {"name", "type", "required", "default", "min", "max", "choices"}
-        if not isinstance(rule, dict) or set(rule) - allowed:
-            raise CleanError("Column rule contains unsupported keys")
-        name = rule.get("name")
+        raise CErr("missing_tokens must be a string list containing empty string")
+    tks = [nfc(tk) for tk in tks]
+    cfg["missing_tokens"] = tks
+    nms = []
+    cks = {"name", "type", "required", "default", "min", "max", "choices"}
+    for rl in cols:
+        if not isinstance(rl, dict) or set(rl) - cks:
+            raise CErr("Column rule contains unsupported keys")
+        nm = rl.get("name")
         if (
-            not isinstance(name, str)
-            or not name
-            or name.strip() != name
-            or name in names
+            not isinstance(nm, str)
+            or not nm
+            or nm.strip() != nm
+            or nm in nms
         ):
-            raise CleanError("Column names must be nonempty, trimmed, and unique")
-        names.append(name)
-        if rule.get("type") not in ("string", "integer", "number", "date"):
-            raise CleanError(f"Unsupported type for {name}")
-        if type(rule.setdefault("required", True)) is not bool:
-            raise CleanError(f"required must be boolean: {name}")
-        for bound in ("min", "max"):
-            if bound in rule:
-                value = rule[bound]
+            raise CErr("Column names must be nonempty, trimmed, and unique")
+        nms.append(nm)
+        if rl.get("type") not in ("string", "integer", "number", "date"):
+            raise CErr(f"Unsupported type for {nm}")
+        if type(rl.setdefault("required", True)) is not bool:
+            raise CErr(f"required must be boolean: {nm}")
+        for bnd in ("min", "max"):
+            if bnd in rl:
+                val = rl[bnd]
                 if (
-                    rule["type"] not in ("integer", "number")
-                    or type(value) not in (int, float)
-                    or not Decimal(str(value)).is_finite()
+                    rl["type"] not in ("integer", "number")
+                    or type(val) not in (int, float)
+                    or not Decimal(str(val)).is_finite()
                 ):
-                    raise CleanError(f"Invalid numeric bound: {name}.{bound}")
-        if "min" in rule and "max" in rule and rule["min"] > rule["max"]:
-            raise CleanError(f"min exceeds max: {name}")
-        if "choices" in rule:
-            choices = rule["choices"]
+                    raise CErr(f"Invalid numeric bound: {nm}.{bnd}")
+        if "min" in rl and "max" in rl and rl["min"] > rl["max"]:
+            raise CErr(f"min exceeds max: {nm}")
+        if "choices" in rl:
+            opts = rl["choices"]
             if (
-                rule["type"] != "string"
-                or not isinstance(choices, list)
-                or not choices
-                or not all(isinstance(choice, str) for choice in choices)
+                rl["type"] != "string"
+                or not isinstance(opts, list)
+                or not opts
+                or not all(isinstance(opt, str) for opt in opts)
             ):
-                raise CleanError(f"choices must be a nonempty string list: {name}")
-            rule["choices"] = [normalize(choice) for choice in choices]
-        if "default" in rule:
-            value = rule["default"]
-            if rule["required"] or not isinstance(value, str):
-                raise CleanError(f"default needs an optional string value: {name}")
-            value = normalize(value)
-            if value in tokens:
-                raise CleanError(f"default must not be a missing token: {name}")
+                raise CErr(f"choices must be a nonempty string list: {nm}")
+            rl["choices"] = [nfc(opt) for opt in opts]
+        if "default" in rl:
+            val = rl["default"]
+            if rl["required"] or not isinstance(val, str):
+                raise CErr(f"default needs an optional string value: {nm}")
+            val = nfc(val)
+            if val in tks:
+                raise CErr(f"default must not be a missing token: {nm}")
             try:
-                rule["default"] = convert(value, rule)
-            except (ValueError, InvalidOperation) as exc:
-                raise CleanError(f"Invalid default for {name}: {exc}") from exc
-    keys = schema.setdefault("dedupe_key", names.copy())
+                rl["default"] = cvt(val, rl)
+            except (ValueError, InvalidOperation) as err:
+                raise CErr(f"Invalid default for {nm}: {err}") from err
+    ks = cfg.setdefault("dedupe_key", nms)
     if (
-        not isinstance(keys, list)
-        or not keys
-        or not all(isinstance(key, str) and key in names for key in keys)
-        or len(set(keys)) != len(keys)
+        not isinstance(ks, list)
+        or not ks
+        or not all(isinstance(k, str) and k in nms for k in ks)
+        or len(set(ks)) != len(ks)
     ):
-        raise CleanError("dedupe_key must contain unique existing column names")
-    return schema
+        raise CErr("dedupe_key must contain unique existing column names")
+    return cfg
 
 
-def clean_row(row, columns, indices, missing_tokens):
-    """Clean one record and collect field errors without stopping the file."""
-    cleaned = []
-    reasons = []
-    filled_count = 0
-    for rule, index in zip(columns, indices):
-        value = normalize(row[index])
-        if value in missing_tokens:
-            if "default" in rule:
-                value = rule["default"]
-                filled_count += 1
-            elif rule["required"]:
-                reasons.append(f"{rule['name']}:missing_required")
+def clnr(rw, cols, cix, mts):
+    cln = []
+    errs = []
+    nf = 0
+    for rl, idx in zip(cols, cix):
+        val = nfc(rw[idx])
+        if val in mts:
+            if "default" in rl:
+                val = rl["default"]
+                nf += 1
+            elif rl["required"]:
+                errs.append(f"{rl['name']}:missing_required")
             else:
-                value = ""
+                val = ""
         else:
             try:
-                value = convert(value, rule)
-            except (ValueError, InvalidOperation) as exc:
-                reasons.append(f"{rule['name']}:{exc}")
-        cleaned.append(value)
-    return cleaned, reasons, filled_count
+                val = cvt(val, rl)
+            except (ValueError, InvalidOperation) as err:
+                errs.append(f"{rl['name']}:{err}")
+        cln.append(val)
+    return cln, errs, nf
 
 
-def serialize_results(names, rows, rejected):
-    """Encode clean CSV and rejected records without changing raw field values."""
-    output = io.StringIO(newline="")
-    writer = csv.writer(output, lineterminator="\n")
-    writer.writerow(names)
-    writer.writerows(rows)
-    clean = output.getvalue().encode("utf-8")
-    rejects = "".join(
-        json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"
-        for record in rejected
+def ser(nms, rws, rej):
+    """Serialize cleaned rows and raw rejected records as UTF-8."""
+    dst = io.StringIO(newline="")
+    wrt = csv.writer(dst, lineterminator="\n")
+    wrt.writerow(nms)
+    wrt.writerows(rws)
+    clnb = dst.getvalue().encode("utf-8")
+    rejb = "".join(
+        json.dumps(rec, ensure_ascii=False, sort_keys=True) + "\n"
+        for rec in rej
     ).encode("utf-8")
-    return clean, rejects
+    return clnb, rejb
 
 
-def clean_data(raw, schema, encoding="utf-8-sig"):
+def clnd(buf, cfg, cdg="utf-8-sig"):
     try:
-        codec = codecs.lookup(encoding).name
-        text = raw.decode(encoding, errors="strict")
-    except (LookupError, UnicodeError) as exc:
-        raise CleanError(f"Cannot decode input with {encoding}: {exc}") from exc
-    if "\x00" in text:
-        raise CleanError("Input contains NUL characters; check encoding or file type")
+        enc = codecs.lookup(cdg).name
+        txt = buf.decode(cdg, errors="strict")
+    except (LookupError, UnicodeError) as err:
+        raise CErr(f"Cannot decode input with {cdg}: {err}") from err
+    if "\x00" in txt:
+        raise CErr("Input contains NUL characters; check encoding or file type")
     csv.field_size_limit(1_000_000)
-    reader = csv.reader(io.StringIO(text, newline=""), strict=True)
-    columns = schema["columns"]
-    names = [rule["name"] for rule in columns]
-    clean_rows = []
-    rejected = []
-    seen = set()
-    invalid_count = duplicate_count = filled_count = input_count = 0
+    rdr = csv.reader(io.StringIO(txt, newline=""), strict=True)
+    cols = cfg["columns"]
+    nms = [rl["name"] for rl in cols]
+    crws = []
+    rej = []
+    sks = set()
+    ni = nd = nf = nr = 0
     try:
-        header = next(reader, None)
-        if header is None or len(header) != len(names) or set(header) != set(names):
-            raise CleanError("CSV header must contain each schema column exactly once")
-        indices = [header.index(name) for name in names]
-        key_indices = [names.index(name) for name in schema["dedupe_key"]]
-        for record, row in enumerate(reader, start=2):
-            input_count += 1
-            if len(row) != len(header):
-                raise CleanError(
-                    f"CSV record {record}: expected {len(header)} cells, got {len(row)}"
+        hdr = next(rdr, None)
+        if hdr is None or len(hdr) != len(nms) or set(hdr) != set(nms):
+            raise CErr("CSV header must contain each schema column exactly once")
+        cix = [hdr.index(nm) for nm in nms]
+        kix = [nms.index(nm) for nm in cfg["dedupe_key"]]
+        for rec, rw in enumerate(rdr, start=2):
+            nr += 1
+            if len(rw) != len(hdr):
+                raise CErr(
+                    f"CSV record {rec}: expected {len(hdr)} cells, got {len(rw)}"
                 )
-            cleaned, reasons, fills = clean_row(
-                row, columns, indices, schema["missing_tokens"]
+            cln, errs, nfl = clnr(
+                rw, cols, cix, cfg["missing_tokens"]
             )
-            if reasons:
-                invalid_count += 1
+            if errs:
+                ni += 1
             else:
-                key = tuple(cleaned[i] for i in key_indices)
-                if key in seen:
-                    duplicate_count += 1
-                    reasons = ["duplicate"]
+                k = tuple(cln[i] for i in kix)
+                if k in sks:
+                    nd += 1
+                    errs = ["duplicate"]
                 else:
-                    seen.add(key)
-                    clean_rows.append(cleaned)
-                    filled_count += fills
-            if reasons:
-                rejected.append({"record": record, "values": row, "reasons": reasons})
-    except csv.Error as exc:
-        raise CleanError(
-            f"Malformed CSV near physical line {reader.line_num}: {exc}"
-        ) from exc
-    clean, rejects = serialize_results(names, clean_rows, rejected)
-    report = {
+                    sks.add(k)
+                    crws.append(cln)
+                    nf += nfl
+            if errs:
+                rej.append({"record": rec, "values": rw, "reasons": errs})
+    except csv.Error as err:
+        raise CErr(
+            f"Malformed CSV near physical line {rdr.line_num}: {err}"
+        ) from err
+    clnb, rejb = ser(nms, crws, rej)
+    rpt = {
         "tool_version": __version__,
-        "schema_version": schema["version"],
-        "encoding": codec,
-        "input_rows": input_count,
-        "output_rows": len(clean_rows),
-        "invalid_rows": invalid_count,
-        "duplicate_rows": duplicate_count,
-        "rejected_rows": len(rejected),
-        "filled_cells_in_output": filled_count,
-        "dedupe_key": schema["dedupe_key"],
+        "schema_version": cfg["version"],
+        "encoding": enc,
+        "input_rows": nr,
+        "output_rows": len(crws),
+        "invalid_rows": ni,
+        "duplicate_rows": nd,
+        "rejected_rows": len(rej),
+        "filled_cells_in_output": nf,
+        "dedupe_key": cfg["dedupe_key"],
         "dedupe_policy": "first_valid_record",
     }
-    return clean, rejects, report
+    return clnb, rejb, rpt
 
 
-def run(input_path, schema_path, output_dir, encoding="utf-8-sig", strict=False):
-    """Publish a new result directory only after input and rules pass validation."""
-    input_path = Path(input_path)
-    schema_path = Path(schema_path)
-    output_dir = Path(output_dir)
-    if output_dir.exists() or output_dir.is_symlink():
-        raise CleanError(f"Output directory already exists: {output_dir}", 3)
-    schema = load_schema(schema_path.read_bytes())
-    clean, rejected, report = clean_data(input_path.read_bytes(), schema, encoding)
-    if strict and report["rejected_rows"]:
-        raise CleanError(
-            f"Strict mode: {report['rejected_rows']} rejected records; "
+def xct(ip, cp, od, cdg="utf-8-sig", st=False):
+    ip = Path(ip)
+    cp = Path(cp)
+    od = Path(od)
+    if od.exists() or od.is_symlink():
+        raise CErr(f"Output directory already exists: {od}", 3)
+    cfg = lcfg(cp.read_bytes())
+    clnb, rej, rpt = clnd(ip.read_bytes(), cfg, cdg)
+    if st and rpt["rejected_rows"]:
+        raise CErr(
+            f"Strict mode: {rpt['rejected_rows']} rejected records; "
             "no output published",
             1,
         )
-    report["strict"] = strict
-    output_dir.parent.mkdir(parents=True, exist_ok=True)
-    # Write all files before exposing the result directory.
+    rpt["strict"] = st
+    od.parent.mkdir(parents=True, exist_ok=True)
+    # Avoid partial results if writing any file fails.
     with tempfile.TemporaryDirectory(
-        prefix=".gamma-clean-", dir=output_dir.parent
-    ) as directory:
-        staging = Path(directory)
-        (staging / "clean.csv").write_bytes(clean)
-        (staging / "rejected.jsonl").write_bytes(rejected)
-        (staging / "report.json").write_bytes(json_bytes(report))
-        staging.rename(output_dir)
-    return report
+        prefix=".gamma-clean-", dir=od.parent
+    ) as td:
+        tmp = Path(td)
+        (tmp / "clean.csv").write_bytes(clnb)
+        (tmp / "rejected.jsonl").write_bytes(rej)
+        rtxt = json.dumps(rpt, ensure_ascii=False, indent=2, sort_keys=True)
+        (tmp / "report.json").write_bytes((rtxt + "\n").encode("utf-8"))
+        tmp.rename(od)
+    return rpt

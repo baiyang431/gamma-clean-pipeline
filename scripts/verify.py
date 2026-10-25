@@ -1,4 +1,4 @@
-"""Exercise the documented CLI and optionally save real verification evidence."""
+"""Run CLI checks for the sample data."""
 
 import argparse
 import json
@@ -11,66 +11,66 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
+RT = Path(__file__).resolve().parents[1]
 
 
-def verify():
-    runs = []
-    with tempfile.TemporaryDirectory(prefix="gamma-verify-") as directory:
-        base = Path(directory)
+def vfy():
+    rns = []
+    with tempfile.TemporaryDirectory(prefix="gamma-verify-") as td:
+        wd = Path(td)
 
-        def invoke(label, source, output, extra=(), expected_exit=0):
+        def inv(lbl, src, dst, ext=(), erc=0):
             args = [
                 sys.executable, "-m", "gamma_clean",
-                "--input", str(source),
+                "--input", str(src),
                 "--schema", "examples/schema.json",
-                "--output-dir", str(output),
-                *extra,
+                "--output-dir", str(dst),
+                *ext,
             ]
-            result = subprocess.run(
-                args, cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
+            res = subprocess.run(
+                args, cwd=RT, capture_output=True, text=True, encoding="utf-8",
                 env={**os.environ, "PYTHONUTF8": "1"},
             )
-            if result.returncode != expected_exit:
+            if res.returncode != erc:
                 raise RuntimeError(
-                    f"{label}: expected exit {expected_exit}, "
-                    f"got {result.returncode}: {result.stderr}"
+                    f"{lbl}: expected exit {erc}, "
+                    f"got {res.returncode}: {res.stderr}"
                 )
-            if expected_exit and output.exists():
-                raise RuntimeError(f"{label}: failed command left an output directory")
-            runs.append({
-                "case": label,
-                "exit_code": result.returncode,
-                "stdout": result.stdout.strip(),
-                "stderr": result.stderr.strip(),
+            if erc and dst.exists():
+                raise RuntimeError(f"{lbl}: failed command left an output directory")
+            rns.append({
+                "case": lbl,
+                "exit_code": res.returncode,
+                "stdout": res.stdout.strip(),
+                "stderr": res.stderr.strip(),
             })
 
-        source = ROOT / "examples" / "dirty.csv"
-        original = source.read_bytes()
-        invoke("sample", source, base / "one")
-        invoke("repeat", source, base / "two")
-        sample = base / "one"
-        expected = (ROOT / "examples/expected/clean.csv").read_bytes()
-        if (sample / "clean.csv").read_bytes() != expected:
+        src = RT / "examples" / "dirty.csv"
+        org = src.read_bytes()
+        inv("sample", src, wd / "one")
+        inv("repeat", src, wd / "two")
+        smp = wd / "one"
+        exp = (RT / "examples/expected/clean.csv").read_bytes()
+        if (smp / "clean.csv").read_bytes() != exp:
             raise RuntimeError("Sample output differs from expected CSV")
-        for name in ("clean.csv", "rejected.jsonl", "report.json"):
-            if (sample / name).read_bytes() != (base / "two" / name).read_bytes():
-                raise RuntimeError(f"Repeat mismatch: {name}")
-        encoded_source = base / "gb18030.csv"
-        encoded_source.write_bytes(original.decode("utf-8").encode("gb18030"))
-        invoke(
-            "explicit_gb18030", encoded_source, base / "gb",
+        for nm in ("clean.csv", "rejected.jsonl", "report.json"):
+            if (smp / nm).read_bytes() != (wd / "two" / nm).read_bytes():
+                raise RuntimeError(f"Repeat mismatch: {nm}")
+        gsrc = wd / "gb18030.csv"
+        gsrc.write_bytes(org.decode("utf-8").encode("gb18030"))
+        inv(
+            "explicit_gb18030", gsrc, wd / "gb",
             ["--encoding", "gb18030"],
         )
-        if (base / "gb/clean.csv").read_bytes() != expected:
+        if (wd / "gb/clean.csv").read_bytes() != exp:
             raise RuntimeError("GB18030 output differs from expected CSV")
-        invoke("strict_rejection", source, base / "strict", ["--strict"], 1)
-        malformed = base / "malformed.csv"
-        malformed.write_bytes(b"wrong,header\n")
-        invoke("bad_header", malformed, base / "bad", expected_exit=2)
-        if source.read_bytes() != original:
+        inv("strict_rejection", src, wd / "strict", ["--strict"], 1)
+        mf = wd / "malformed.csv"
+        mf.write_bytes(b"wrong,header\n")
+        inv("bad_header", mf, wd / "bad", erc=2)
+        if src.read_bytes() != org:
             raise RuntimeError("Source data was modified")
-        report = json.loads((sample / "report.json").read_bytes())
+        rpt = json.loads((smp / "report.json").read_bytes())
         return {
             "verified_at_utc": datetime.now(timezone.utc).isoformat(),
             "environment": {
@@ -85,22 +85,22 @@ def verify():
                 "failure_outputs_absent": True,
                 "source_unchanged": True,
             },
-            "sample_report": report,
-            "cli_runs": runs,
+            "sample_report": rpt,
+            "cli_runs": rns,
         }
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--save", type=Path, help="Optional evidence JSON destination")
-    args = parser.parse_args()
-    evidence = verify()
-    text = json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+def cli():
+    prs = argparse.ArgumentParser(description=__doc__)
+    prs.add_argument("--save", type=Path, help="Optional evidence JSON destination")
+    args = prs.parse_args()
+    evd = vfy()
+    txt = json.dumps(evd, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     if args.save:
         args.save.parent.mkdir(parents=True, exist_ok=True)
-        args.save.write_text(text, encoding="utf-8", newline="\n")
-    print(text, end="")
+        args.save.write_text(txt, encoding="utf-8", newline="\n")
+    print(txt, end="")
 
 
 if __name__ == "__main__":
-    main()
+    cli()
