@@ -1,11 +1,5 @@
 {
-  "artifact_sha256": {
-    "clean.csv": "c30aede0eb777a700faf4a85ee92f0e03587c99f9f150fb4578a27179f056c06",
-    "rejected.jsonl": "0692b86c6a7ea8d1f921b6ce76852ad7639e33dd06862649ce253c311cccc511",
-    "report.json": "bf9c847036028b3fe64eae51be738297ff33fd35a4ccedb7739713ba8fd5932a"
-  },
   "checks": {
-    "clean_csv_idempotent": true,
     "expected_clean_match": true,
     "failure_outputs_absent": true,
     "gb18030_output_equal": true,
@@ -24,12 +18,6 @@
       "exit_code": 0,
       "stderr": "",
       "stdout": "OK: input=11 output=4 invalid=6 duplicates=1"
-    },
-    {
-      "case": "idempotent",
-      "exit_code": 0,
-      "stderr": "",
-      "stdout": "OK: input=4 output=4 invalid=0 duplicates=0"
     },
     {
       "case": "explicit_gb18030",
@@ -51,10 +39,7 @@
     }
   ],
   "environment": {
-    "implementation": "CPython",
-    "machine": "AMD64",
-    "os": "Windows",
-    "os_release": "11",
+    "os": "Windows 11",
     "python": "3.13.13",
     "runtime_dependencies": []
   },
@@ -71,14 +56,8 @@
     "output_rows": 4,
     "rejected_rows": 7,
     "schema_version": 1,
-    "sha256": {
-      "clean.csv": "c30aede0eb777a700faf4a85ee92f0e03587c99f9f150fb4578a27179f056c06",
-      "input": "6ef25d55f1956d4513a14a58edc536bbe0bb7d37a493fa3cf18dcd1e2aa89756",
-      "rejected.jsonl": "0692b86c6a7ea8d1f921b6ce76852ad7639e33dd06862649ce253c311cccc511",
-      "schema": "7a5453134d32ec7603d74c88d9e420d0aa324a26f6cd9d67132f7579bab683d5"
-    },
     "strict": false,
     "tool_version": "1.0.0"
   },
-  "verified_at_utc": "2026-10-24T11:42:40.935162+00:00"
+  "verified_at_utc": "2026-10-24T16:12:04.070969+00:00"
 }
