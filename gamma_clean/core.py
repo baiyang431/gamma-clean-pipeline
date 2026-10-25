@@ -1,5 +1,3 @@
-"""CSV cleaning and rule validation."""
-
 import codecs
 import csv
 import io
@@ -8,14 +6,14 @@ import re
 import tempfile
 import unicodedata
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from pathlib import Path
 
 from . import __version__
 
 
 class CErr(Exception):
-    """An expected input, schema, or quality error."""
+    """携带命令行退出码的清洗错误。"""
 
     def __init__(self, msg, rc=2):
         super().__init__(msg)
@@ -27,7 +25,7 @@ def nfc(val):
 
 
 def cvt(val, rl):
-    """Return a canonical string or raise ValueError with a stable reason."""
+    """校验失败时抛出 ValueError，错误消息直接用作剔除原因。"""
     typ = rl["type"]
     if typ == "integer":
         if not re.fullmatch(r"[+-]?[0-9]+", val):
@@ -133,7 +131,7 @@ def lcfg(buf):
                 raise CErr(f"default must not be a missing token: {nm}")
             try:
                 rl["default"] = cvt(val, rl)
-            except (ValueError, InvalidOperation) as err:
+            except ValueError as err:
                 raise CErr(f"Invalid default for {nm}: {err}") from err
     ks = cfg.setdefault("dedupe_key", nms)
     if (
@@ -163,14 +161,13 @@ def clnr(rw, cols, cix, mts):
         else:
             try:
                 val = cvt(val, rl)
-            except (ValueError, InvalidOperation) as err:
+            except ValueError as err:
                 errs.append(f"{rl['name']}:{err}")
         cln.append(val)
     return cln, errs, nf
 
 
 def ser(nms, rws, rej):
-    """Serialize cleaned rows and raw rejected records as UTF-8."""
     dst = io.StringIO(newline="")
     wrt = csv.writer(dst, lineterminator="\n")
     wrt.writerow(nms)
@@ -264,7 +261,7 @@ def xct(ip, cp, od, cdg="utf-8-sig", st=False):
         )
     rpt["strict"] = st
     od.parent.mkdir(parents=True, exist_ok=True)
-    # Avoid partial results if writing any file fails.
+    # 避免写入失败后留下不完整的结果。
     with tempfile.TemporaryDirectory(
         prefix=".gamma-clean-", dir=od.parent
     ) as td:

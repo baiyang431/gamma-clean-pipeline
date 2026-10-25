@@ -1,5 +1,3 @@
-"""Run CLI checks for the sample data."""
-
 import argparse
 import json
 import os
@@ -91,7 +89,7 @@ def vfy():
 
 
 def cli():
-    prs = argparse.ArgumentParser(description=__doc__)
+    prs = argparse.ArgumentParser(description="Run CLI checks for the sample data.")
     prs.add_argument("--save", type=Path, help="Optional evidence JSON destination")
     args = prs.parse_args()
     evd = vfy()

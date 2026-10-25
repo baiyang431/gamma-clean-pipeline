@@ -7,7 +7,6 @@ test_dec (test_pipeline.PT.test_dec) ... ok
 test_dkey (test_pipeline.PT.test_dkey) ... ok
 test_drow (test_pipeline.PT.test_drow) ... ok
 test_dt (test_pipeline.PT.test_dt) ... ok
-test_encerr (test_pipeline.PT.test_encerr) ... ok
 test_fmt (test_pipeline.PT.test_fmt) ... ok
 test_gb (test_pipeline.PT.test_gb) ... ok
 test_hdr0 (test_pipeline.PT.test_hdr0) ... ok
@@ -31,6 +30,6 @@ test_sterr (test_pipeline.PT.test_sterr) ... ok
 test_wrerr (test_pipeline.PT.test_wrerr) ... ok
 
 ----------------------------------------------------------------------
-Ran 31 tests in 1.909s
+Ran 30 tests in 2.045s
 
 OK

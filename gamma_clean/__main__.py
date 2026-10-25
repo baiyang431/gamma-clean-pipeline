@@ -1,5 +1,3 @@
-"""Run with python -m gamma_clean."""
-
 import argparse
 import sys
 

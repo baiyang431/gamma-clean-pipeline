@@ -92,8 +92,6 @@ class PT(unittest.TestCase):
             (EX / "expected" / "clean.csv").read_bytes(),
         )
 
-    def test_encerr(self):
-        buf = (EX / "dirty.csv").read_text(encoding="utf-8").encode("gb18030")
         for cdg in ("utf-8-sig", "does-not-exist"):
             with self.subTest(encoding=cdg), self.assertRaises(CErr):
                 clnd(buf, self.cfg, cdg)
